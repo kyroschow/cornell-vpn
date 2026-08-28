@@ -80,6 +80,11 @@ the file as a secret delivers it byte for byte. Do not "simplify" this back to
   occasionally out of service and simply time out - `vpn5-asa` was down during
   development. `restart: on-failure` retries; set `VPN_HOST` to pin a specific
   node (e.g. `vpn4-asa.cuvpn.cornell.edu`) if one is reliably up.
+- If `docker exec cornell-vpn ip link show tun0` reports an MTU of 576, DTLS is
+  failing on your network - the log will also show "Dead Peer Detection
+  detected dead peer". Set `VPN_NO_DTLS=1` in `vpn.env` and reconnect; the
+  tunnel then runs over TLS/TCP at a stable ~1303 MTU. Working DTLS gives a
+  slightly better 1390, so leave it off unless you see the 576 symptom.
 - openconnect probes the path MTU and normally settles on 1390. On a
   constrained link (a phone hotspot, for example) it may settle much lower -
   576 was observed on cellular. That is correct adaptation, not a fault: the

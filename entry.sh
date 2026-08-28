@@ -25,6 +25,7 @@ if [ -f "$CRED_FILE" ]; then
             VPN_HOST)     VPN_HOST="${VPN_HOST:-$val}" ;;
             VPN_GROUP)    VPN_GROUP="${VPN_GROUP:-$val}" ;;
             VPN_BASE_MTU) VPN_BASE_MTU="${VPN_BASE_MTU:-$val}" ;;
+            VPN_NO_DTLS)  VPN_NO_DTLS="${VPN_NO_DTLS:-$val}" ;;
         esac
     done < "$CRED_FILE"
 fi
@@ -84,6 +85,16 @@ OC_ARGS=(
 # openconnect's DTLS MTU probe can settle on 576 bytes, which works but costs
 # throughput. Setting VPN_BASE_MTU (try 1500) lets it negotiate a normal MTU.
 # Left unset by default because the probed value is the safe one.
+# DTLS (UDP) can be unreliable on some paths: openconnect's MTU probe fails,
+# it falls back to the 576-byte IPv4 minimum, and the session repeatedly dies
+# with "Dead Peer Detection detected dead peer". Disabling DTLS runs everything
+# over TLS/TCP, which negotiates a normal 1390 MTU and stays up. Check with
+# `docker exec cornell-vpn ip link show tun0`.
+if [ "${VPN_NO_DTLS:-0}" = "1" ]; then
+    log "DTLS disabled - tunnelling over TLS/TCP"
+    OC_ARGS+=(--no-dtls)
+fi
+
 if [ -n "${VPN_BASE_MTU:-}" ]; then
     log "using base MTU ${VPN_BASE_MTU}"
     OC_ARGS+=(--base-mtu="$VPN_BASE_MTU")
