@@ -1,0 +1,18 @@
+services:
+  vpn:
+    build: .
+    container_name: cornell-vpn
+    # Needed for mknod /dev/net/tun and for route/DNS setup by vpnc-script.
+    privileged: true
+    # Credentials are mounted as a file, NOT passed via `env_file`: Compose
+    # interpolates `$` in env_file values, which silently corrupts passwords
+    # containing `$`. A secret file is delivered to the container byte for byte.
+    secrets:
+      - vpn_credentials
+    restart: on-failure
+    # Give openconnect time to tear the tunnel down cleanly on stop.
+    stop_grace_period: 30s
+
+secrets:
+  vpn_credentials:
+    file: ./vpn.env

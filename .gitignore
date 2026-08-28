@@ -1,0 +1,7 @@
+# Real credentials - NetID password in plaintext. Never commit.
+vpn.env
+
+.DS_Store
+*.log
+*.bak
+*.bak.*
