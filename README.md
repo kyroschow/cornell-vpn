@@ -4,6 +4,11 @@ Connects to Cornell's CU VPN (`cuvpn.cuvpn.cornell.edu`) using **openconnect**,
 which speaks the same Cisco AnyConnect/ASA protocol as Cisco Secure Client but
 is built for headless use and runs natively on arm64.
 
+Alpine-based, ~56MB. `nc` comes from busybox and is what the host's ssh
+`ProxyCommand` runs; `vpnc-script` lands at `/etc/vpnc/vpnc-script` on Alpine
+and `/usr/share/vpnc-scripts/vpnc-script` on Debian/Ubuntu, so `entry.sh`
+detects whichever is present.
+
 ## Usage
 
 ```sh

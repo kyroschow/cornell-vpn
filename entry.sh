@@ -64,13 +64,21 @@ printf '  ============================================================\n\n'
 # from the next line. Fed by process substitution so the password is never
 # written to disk or visible in the process list, and so openconnect replaces
 # this shell as PID 1 and receives SIGTERM directly for a clean disconnect.
+# Debian/Ubuntu ship this under /usr/share, Alpine under /etc. openconnect
+# calls it on connect to install routes and DNS.
+VPNC_SCRIPT=""
+for candidate in /etc/vpnc/vpnc-script /usr/share/vpnc-scripts/vpnc-script; do
+    if [ -x "$candidate" ]; then VPNC_SCRIPT="$candidate"; break; fi
+done
+[ -n "$VPNC_SCRIPT" ] || fail "vpnc-script not found - routes and DNS cannot be configured"
+
 OC_ARGS=(
     --protocol=anyconnect
     --user="$VPN_NETID"
     --authgroup="$VPN_GROUP"
     --passwd-on-stdin
     --interface=tun0
-    --script=/usr/share/vpnc-scripts/vpnc-script
+    --script="$VPNC_SCRIPT"
 )
 
 # openconnect's DTLS MTU probe can settle on 576 bytes, which works but costs
