@@ -99,8 +99,32 @@ if [ -n "${VPN_BASE_MTU:-}" ]; then
     log "using base MTU ${VPN_BASE_MTU}"
     OC_ARGS+=(--base-mtu="$VPN_BASE_MTU")
 fi
-# exec so openconnect becomes PID 1 and receives SIGTERM directly for a clean
-# disconnect. The host reaches this tunnel via `docker exec -i cornell-vpn nc`,
-# so no proxy or published port is needed.
-exec openconnect "${OC_ARGS[@]}" "$VPN_HOST" \
-    < <(printf '%s\n%s\n' "$VPN_PASSWORD" "$VPN_DUO")
+# openconnect runs in the background rather than via exec so its output can be
+# inspected after it exits. That distinction matters: a REJECTED LOGIN must not
+# be retried automatically. Every retry submits the credentials again and fires
+# another Duo push, so an unattended loop (tunnel drops overnight, nobody
+# approves) will spam the phone all night and risks a Duo fraud lockout.
+CONNECT_LOG="$(mktemp)"
+set +e
+openconnect "${OC_ARGS[@]}" "$VPN_HOST" \
+    < <(printf '%s\n%s\n' "$VPN_PASSWORD" "$VPN_DUO") \
+    > >(tee "$CONNECT_LOG") 2>&1 &
+OC_PID=$!
+
+# Forward container shutdown to openconnect so the tunnel closes cleanly.
+trap 'kill -TERM "$OC_PID" 2>/dev/null; wait "$OC_PID" 2>/dev/null; exit 0' TERM INT
+wait "$OC_PID"
+set -e
+
+sleep 1   # let tee flush before reading
+
+if grep -q "Login failed" "$CONNECT_LOG"; then
+    rm -f "$CONNECT_LOG"
+    log "authentication rejected - was the Duo ${VPN_DUO} approved in time?"
+    log "NOT retrying: each attempt sends another push. Run 'make up' when ready."
+    exit 0        # exit 0 so `restart: on-failure` leaves this stopped
+fi
+
+rm -f "$CONNECT_LOG"
+log "connection ended - exiting non-zero so the restart policy reconnects"
+exit 1
