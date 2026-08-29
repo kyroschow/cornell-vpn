@@ -9,7 +9,11 @@ services:
     # containing `$`. A secret file is delivered to the container byte for byte.
     secrets:
       - vpn_credentials
-    restart: on-failure
+    # entry.sh exits 0 on a rejected login so the container stays down rather
+    # than replaying it - every replay fires another Duo push. The :3 cap is a
+    # backstop: even if that logic ever regresses, Docker will not restart more
+    # than three times, so no bug can spam pushes indefinitely overnight.
+    restart: "on-failure:3"
     # Give openconnect time to tear the tunnel down cleanly on stop.
     stop_grace_period: 30s
 
