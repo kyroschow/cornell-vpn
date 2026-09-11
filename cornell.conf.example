@@ -3,7 +3,7 @@
 
 protocol = anyconnect
 server = https://cuvpn.cuvpn.cornell.edu
-user = cc3252
+user = your-netid
 
 # Required by Cornell since 2021-07-15.
 authgroup = Two-Step_Login

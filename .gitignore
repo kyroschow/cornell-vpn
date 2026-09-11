@@ -1,3 +1,7 @@
+# Your personal copy - holds your NetID (and any local overrides).
+# Start from cornell.conf.example.
+cornell.conf
+
 .DS_Store
 *.log
 *.bak

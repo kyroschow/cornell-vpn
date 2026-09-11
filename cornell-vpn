@@ -53,7 +53,13 @@ cmd_up() {
         cmd_status
         return 0
     fi
-    [ -f "$CONFIG" ] || die "config not found: $CONFIG"
+    if [ ! -f "$CONFIG" ]; then
+        if [ -f "$CONFIG.example" ]; then
+            die "no config yet. Create one and set your NetID:
+    cp $CONFIG.example $CONFIG"
+        fi
+        die "config not found: $CONFIG"
+    fi
 
     echo "Connecting to Cornell CU VPN."
     echo "There are TWO different password prompts - they are not the same password:"

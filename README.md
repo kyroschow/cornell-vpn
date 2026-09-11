@@ -10,17 +10,20 @@ Two files:
 | File | Purpose |
 |---|---|
 | `cornell-vpn` | up / down / status / restart wrapper |
-| `cornell.conf` | openconnect settings (no password) |
+| `cornell.conf` | openconnect settings (no password) — yours, gitignored |
+| `cornell.conf.example` | template to copy |
 
 ## Install
 
 ```sh
 brew install openconnect
+cp cornell.conf.example cornell.conf   # then set `user` to your NetID
 ln -sf "$PWD/cornell-vpn" /opt/homebrew/bin/cornell-vpn
 ```
 
-Set `user` in `cornell.conf` to your NetID. `brew install openconnect` also
-provides the `vpnc-script` that installs routes and DNS.
+`cornell.conf` is gitignored, so your NetID and any local overrides stay out of
+the repo. `brew install openconnect` also provides the `vpnc-script` that
+installs routes and DNS.
 
 ## Use
 
@@ -60,7 +63,8 @@ laptop sleep, or a long outage — it exits and stays exited.
 
 ## Configuration
 
-`cornell.conf` is a standard openconnect config file (long options, no `--`).
+`cornell.conf` is a standard openconnect config file (long options, no `--`),
+copied from `cornell.conf.example` and ignored by git.
 Two settings are commented out and worth knowing about:
 
 ```
