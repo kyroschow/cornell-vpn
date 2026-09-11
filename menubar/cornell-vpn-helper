@@ -1,0 +1,69 @@
+#!/bin/bash
+# Root helper for the Cornell VPN menu bar app. Installed to
+# /usr/local/libexec/ (root-owned) and invoked through a narrow sudoers rule.
+#
+# WHY THIS EXISTS: the sudoers rule is NOPASSWD, so it must not be a way to run
+# arbitrary code as root. Therefore this script:
+#   - accepts only "up <netid>" and "down", and validates the netid
+#   - hard-codes the openconnect binary, vpnc-script and config paths
+#   - reads its config from a ROOT-OWNED file, so a user-writable config cannot
+#     inject `script = /tmp/evil` (openconnect runs that script as root)
+#   - verifies the SHA-256 of openconnect and vpnc-script against hashes
+#     recorded at install time. Homebrew's prefix is user-writable, so without
+#     this check anyone able to write /opt/homebrew could swap the binary and
+#     escalate to root through the NOPASSWD rule.
+#   - takes the VPN password on stdin, never in argv (argv is world-readable)
+set -euo pipefail
+
+OPENCONNECT=/opt/homebrew/bin/openconnect
+VPNC_SCRIPT=/opt/homebrew/etc/vpnc/vpnc-script
+CONFDIR=/usr/local/etc/cornell-vpn
+CONFIG="$CONFDIR/cornell.conf"
+HASHES="$CONFDIR/integrity.sha256"
+PIDFILE=/var/run/cornell-vpn.pid
+
+die() { printf 'cornell-vpn-helper: %s\n' "$*" >&2; exit 1; }
+
+verify_integrity() {
+    [ -f "$HASHES" ] || die "missing $HASHES - re-run install.sh"
+    if ! shasum -a 256 -c "$HASHES" >/dev/null 2>&1; then
+        die "integrity check FAILED for openconnect or vpnc-script.
+    This is expected after 'brew upgrade openconnect' - re-run install.sh to
+    re-record the hashes. If you did not upgrade, investigate before running."
+    fi
+}
+
+case "${1:-}" in
+    up)
+        netid="${2:-}"
+        [[ "$netid" =~ ^[A-Za-z0-9_-]{2,32}$ ]] || die "invalid netid"
+        [ -f "$CONFIG" ] || die "missing $CONFIG - re-run install.sh"
+        verify_integrity
+        if pgrep -x openconnect >/dev/null 2>&1; then
+            echo "already connected"; exit 0
+        fi
+        # Password arrives on stdin and is passed straight through.
+        exec "$OPENCONNECT" \
+            --config "$CONFIG" \
+            --user "$netid" \
+            --script "$VPNC_SCRIPT" \
+            --passwd-on-stdin \
+            --background \
+            --pid-file "$PIDFILE"
+        ;;
+    down)
+        pid="$(pgrep -x openconnect 2>/dev/null | head -1 || true)"
+        [ -n "$pid" ] || { echo "not connected"; exit 0; }
+        kill -TERM "$pid" 2>/dev/null || true
+        for _ in $(seq 1 20); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.25
+        done
+        kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+        rm -f "$PIDFILE" 2>/dev/null || true
+        echo "disconnected"
+        ;;
+    *)
+        die "usage: cornell-vpn-helper {up <netid>|down}"
+        ;;
+esac

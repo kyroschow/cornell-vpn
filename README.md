@@ -61,6 +61,49 @@ openconnect does resume a *briefly dropped* tunnel by itself using the session
 cookie, which involves no Duo prompt. Once that cookie is rejected — after a
 laptop sleep, or a long outage — it exits and stays exited.
 
+## Menu bar app (optional)
+
+`menubar/` builds a small menu-bar-only app: click the lock icon to connect or
+disconnect, with no terminal.
+
+```sh
+./menubar/install.sh      # NOT with sudo - it asks when it needs root
+```
+
+It builds `/Applications/CornellVPN.app` (no Dock icon), installs a root helper
+and a narrow `sudoers.d` rule, and opens Settings so you can save your NetID and
+password to the macOS Keychain. After that: click the icon, Connect, approve the
+Duo push. Add the app to Login Items to have it start automatically.
+
+Change your NetID or password any time from **Settings** in the menu; *Forget*
+clears both. The password lives in the Keychain under service `cornell-vpn` and
+can be removed in Keychain Access.
+
+### Security note
+
+The sudoers rule is `NOPASSWD`, which is what makes one click enough. It is
+scoped to one root-owned helper that accepts only `up <netid>` and `down`,
+validates the NetID, reads a **root-owned** config (a user-writable one could
+inject `script = ...`, which openconnect runs as root), and takes the password
+on stdin rather than argv.
+
+It also verifies the SHA-256 of `openconnect` and `vpnc-script` before running
+them. That check matters: Homebrew's prefix is user-writable, so without it any
+process running as you could replace `openconnect` and reach root through the
+NOPASSWD rule. Re-run `install.sh` after `brew upgrade openconnect` to
+re-record the hashes.
+
+This is still a real trade: a passwordless path to root exists on the machine,
+narrowed as far as practical. To drop it, `sudo rm /etc/sudoers.d/cornell-vpn`
+and use the `cornell-vpn` CLI, which asks for your password every time.
+
+Uninstall:
+
+```sh
+sudo rm -rf /Applications/CornellVPN.app /usr/local/libexec/cornell-vpn-helper \
+            /usr/local/etc/cornell-vpn /etc/sudoers.d/cornell-vpn
+```
+
 ## Configuration
 
 `cornell.conf` is a standard openconnect config file (long options, no `--`),
