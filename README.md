@@ -1,8 +1,16 @@
 # Cornell CU VPN
 
-Connects to Cornell's CU VPN with **openconnect**, natively on macOS. The Mac
-itself joins the VPN, so ssh, VS Code Remote-SSH, browsers and everything else
-reach Cornell directly.
+Connects to Cornell's CU VPN with [openconnect](https://www.infradead.org/openconnect/),
+running natively on macOS. The Mac itself joins the VPN, so ssh, VS Code
+Remote-SSH, browsers and everything else reach Cornell directly — no proxy, no
+container, no per-application configuration.
+
+Two files:
+
+| File | Purpose |
+|---|---|
+| `cornell-vpn` | up / down / status / restart wrapper |
+| `cornell.conf` | openconnect settings (no password) |
 
 ## Install
 
@@ -11,72 +19,107 @@ brew install openconnect
 ln -sf "$PWD/cornell-vpn" /opt/homebrew/bin/cornell-vpn
 ```
 
-Set `user` in `cornell.conf` to your NetID.
+Set `user` in `cornell.conf` to your NetID. `brew install openconnect` also
+provides the `vpnc-script` that installs routes and DNS.
 
 ## Use
 
 ```sh
-cornell-vpn up       # prompts for password, then sends a Duo push
-cornell-vpn status   # connected? tunnel address and MTU
-cornell-vpn down     # disconnect
-cornell-vpn restart  # down, then up
+cornell-vpn up        # connect  (password prompts, then a Duo push)
+cornell-vpn status    # connected? tunnel interface, address, MTU
+cornell-vpn down      # disconnect
+cornell-vpn restart   # down, then up
 ```
-
-`up` asks for **two different passwords**, in this order:
-
-1. **macOS login password** - for `sudo`, because openconnect edits the routing
-   table and DNS.
-2. **Cornell NetID password** - for the VPN itself. Never stored.
-
-They are easy to confuse. If you see `Sorry, try again.` that is *sudo*
-rejecting your Mac password; openconnect says `Login failed.` instead.
 
 Then `ssh cornell-ece`, or anything else that needs Cornell.
 
-## No retry, by design
+### Two different passwords
+
+`up` asks for two, in this order. They are not the same:
+
+1. **macOS login password** — for `sudo`. openconnect edits the routing table
+   and DNS, which needs root.
+2. **Cornell NetID password** — for the VPN. Never stored anywhere.
+
+If you see `Sorry, try again.` that is *sudo* rejecting your **Mac** password.
+openconnect says `Login failed.` instead. The prompts are labelled `[1/2]` and
+`[2/2]` to keep them apart.
+
+### No retry, by design
 
 If the Duo push is not approved in time, openconnect exits and **nothing
 restarts it**. Run `cornell-vpn up` again for a fresh push.
 
-This is deliberate. An automatic retry resubmits the credentials and fires
-another push each time; an unattended loop will spam your phone overnight and
-risks a Duo fraud lockout. That happened with the earlier Docker version.
+This is deliberate. An automatic retry resubmits your credentials and fires
+another push each time; left unattended it will send pushes all night and risks
+a Duo fraud lockout. An earlier Docker version of this did exactly that.
 
-openconnect does resume a *briefly dropped* tunnel on its own using the session
-cookie, which involves no Duo prompt. Once that cookie is rejected - after a
-laptop sleep, or a long outage - it exits and stays exited.
+openconnect does resume a *briefly dropped* tunnel by itself using the session
+cookie, which involves no Duo prompt. Once that cookie is rejected — after a
+laptop sleep, or a long outage — it exits and stays exited.
+
+## Configuration
+
+`cornell.conf` is a standard openconnect config file (long options, no `--`).
+Two settings are commented out and worth knowing about:
+
+```
+# no-dtls = true
+# server = https://vpn4-asa.cuvpn.cornell.edu
+```
+
+Environment overrides: `CORNELL_VPN_CONFIG`, `CORNELL_VPN_PIDFILE`.
 
 ## Gateway notes
 
-- Tunnel group (`authgroup`) must be `Two-Step_Login`, required since 2021-07-15.
-- Username is the bare NetID, not an email address.
-- Second factor is `push`, `phone`, `sms`, or a 6-digit passcode, set via
-  `form-entry = main:secondary_password=...`.
-- `cuvpn.cuvpn.cornell.edu` is a load-balancing VIP that redirects to a cluster
-  member (`vpn4-asa` / `vpn5-asa`). The redirect happens *before* the login
-  form, so a member that is out of service makes the connection hang with no
-  Duo push at all. `vpn5-asa` was down 2026-08-28 to at least 08-30. If
-  connections hang, test the members and pin a healthy one with `server =` in
-  `cornell.conf`:
-  ```sh
-  nc -z -w5 132.236.56.113 443   # vpn4-asa
-  nc -z -w5 132.236.56.114 443   # vpn5-asa
-  ```
-- Split tunnel: only Cornell networks route over the VPN, so your public IP
-  will not change. That is expected.
-- If `cornell-vpn status` reports an MTU near 576, DTLS is failing on that
-  network - uncomment `no-dtls` in `cornell.conf` and reconnect.
+- `authgroup` must be `Two-Step_Login`, required by Cornell since 2021-07-15.
+- The username is the bare NetID, not an email address.
+- The Duo factor is set by form field name rather than prompt order:
+  `form-entry = main:secondary_password=push`. Also accepts `phone`, `sms`, or
+  a 6-digit passcode. Supplying it by name avoids the ordering bugs that come
+  from piping answers blind into the client's prompts.
+- **Split tunnel.** Only Cornell networks route over the VPN, so your public IP
+  does not change. That is expected, not a failure.
+
+## Troubleshooting
+
+**Connection hangs before the password prompt.** `cuvpn.cuvpn.cornell.edu` is a
+load-balancing VIP that redirects to a cluster member (`vpn4-asa` /
+`vpn5-asa`). The redirect happens *before* the login form, so a member that is
+out of service makes the connection hang with no Duo push at all. `vpn5-asa`
+was down 2026-08-28 to at least 08-30. Test the members and pin a healthy one
+with `server =` in `cornell.conf`:
+
+```sh
+nc -z -w5 132.236.56.113 443   # vpn4-asa
+nc -z -w5 132.236.56.114 443   # vpn5-asa
+```
+
+**MTU around 576 / slow transfers.** DTLS (UDP) is failing on that network:
+openconnect's MTU probe falls back to the IPv4 minimum and the session keeps
+dying with "Dead Peer Detection detected dead peer". Uncomment `no-dtls` in
+`cornell.conf` and reconnect. A healthy tunnel shows ~1300–1400 in
+`cornell-vpn status`.
+
+**`Login failed.`** The NetID password or the Duo factor was rejected — or the
+push simply was not approved within about 30 seconds. Nothing retries; run
+`cornell-vpn up` again.
 
 ## History
 
-This started as a Docker setup, removed in favour of running openconnect
-directly; `git log` has it. Cisco's own Linux client was tried first and
-abandoned: it authenticates but fails at "Activating VPN adapter" under x86
-emulation on Apple silicon. Two findings from that, if anyone retries it:
+This began as a Docker setup and, before that, an attempt to use Cisco's own
+Linux client. Both were removed; `git log` has them. Cisco's client
+authenticates but fails at "Activating VPN adapter" under x86 emulation on
+Apple silicon. Two findings, should anyone retry it:
 
 - The Cisco CLI's `Group:` prompt *displays* the tunnel group but does not read
   a line from stdin. Feeding it one shifts every later answer by one position,
   so authentication fails regardless of the credentials.
-- `BypassDownloader=true` skips the crashing downloader but then rejects the
-  connection for a profile mismatch, since the gateway's profile can no longer
-  be fetched.
+- `BypassDownloader=true` skips the crashing downloader, but the client then
+  rejects the connection for a profile mismatch, since the gateway's profile
+  can no longer be fetched.
+
+The Docker version worked, but put the tunnel in a container network namespace,
+so the Mac was never on the VPN — everything had to be funnelled through
+`ProxyCommand docker exec -i cornell-vpn nc %h %p`, which covered ssh and
+nothing else.
