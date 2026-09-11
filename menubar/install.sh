@@ -101,9 +101,16 @@ sudo install -o root -g wheel -m 440 "$TMP_SUDOERS" "$SUDOERS"
 rm -f "$TMP_SUDOERS"
 
 step "Verifying"
-sudo -n "$HELPER" 2>&1 | grep -q "usage:" \
-    && echo "  helper runs without a password" \
-    || die "helper did not run passwordless - check $SUDOERS"
+# Capture into a variable rather than piping: the helper exits non-zero on its
+# usage message (correctly), and `set -o pipefail` would propagate that even
+# when grep matched, making a working install look like a failure.
+probe="$(sudo -n "$HELPER" 2>&1 || true)"
+if printf '%s' "$probe" | grep -q 'usage:'; then
+    echo "  helper runs without a password"
+else
+    die "helper did not run passwordless - check $SUDOERS
+    got: $probe"
+fi
 
 open "$APP"
 cat <<DONE
