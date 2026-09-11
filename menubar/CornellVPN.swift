@@ -15,11 +15,18 @@ let NETID_KEY = "netid"
 
 // MARK: - Shell
 
+// Never uses readDataToEndOfFile(). A daemonising child (openconnect
+// --background) inherits the stdout pipe and holds it open for the life of the
+// tunnel, so reading to EOF blocks until the VPN disconnects - which froze the
+// UI on "Connecting" while the tunnel was already up. Output is collected
+// incrementally instead, and the wait is bounded.
 @discardableResult
-func run(_ path: String, _ args: [String], stdin: String? = nil) -> (status: Int32, output: String) {
+func run(_ path: String, _ args: [String], stdin: String? = nil,
+         timeout: TimeInterval = 120) -> (status: Int32, output: String) {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: path)
     proc.arguments = args
+
     let outPipe = Pipe()
     proc.standardOutput = outPipe
     proc.standardError = outPipe
@@ -28,14 +35,46 @@ func run(_ path: String, _ args: [String], stdin: String? = nil) -> (status: Int
         inPipe = Pipe()
         proc.standardInput = inPipe
     }
-    do { try proc.run() } catch { return (-1, "failed to launch \(path): \(error)") }
+
+    let lock = NSLock()
+    var collected = Data()
+    outPipe.fileHandleForReading.readabilityHandler = { handle in
+        let chunk = handle.availableData
+        guard !chunk.isEmpty else { return }
+        lock.lock(); collected.append(chunk); lock.unlock()
+    }
+
+    do { try proc.run() } catch {
+        outPipe.fileHandleForReading.readabilityHandler = nil
+        return (-1, "failed to launch \(path): \(error)")
+    }
+
     if let secret = stdin, let pipe = inPipe {
         pipe.fileHandleForWriting.write(Data((secret + "\n").utf8))
         pipe.fileHandleForWriting.closeFile()
     }
-    let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-    proc.waitUntilExit()
-    return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+
+    var timedOut = false
+    let deadline = Date().addingTimeInterval(timeout)
+    while proc.isRunning {
+        if Date() >= deadline { timedOut = true; break }
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    if timedOut {
+        proc.terminate()
+        Thread.sleep(forTimeInterval: 0.5)
+        if proc.isRunning { kill(proc.processIdentifier, SIGKILL) }
+    }
+
+    // Drain whatever is buffered, then stop listening.
+    let tail = outPipe.fileHandleForReading.availableData
+    if !tail.isEmpty { lock.lock(); collected.append(tail); lock.unlock() }
+    outPipe.fileHandleForReading.readabilityHandler = nil
+
+    lock.lock(); let data = collected; lock.unlock()
+    var text = String(data: data, encoding: .utf8) ?? ""
+    if timedOut { text += "\n(timed out after \(Int(timeout))s)" }
+    return (timedOut ? -2 : proc.terminationStatus, text)
 }
 
 // MARK: - Keychain
@@ -87,12 +126,12 @@ struct VPNState {
 }
 
 func currentState() -> VPNState {
-    guard run("/usr/bin/pgrep", ["-x", "openconnect"]).status == 0 else { return VPNState() }
+    guard run("/usr/bin/pgrep", ["-x", "openconnect"], timeout: 5).status == 0 else { return VPNState() }
     // openconnect is running; find the utun carrying a Cornell 10.x address.
-    let list = run("/sbin/ifconfig", ["-l"]).output
+    let list = run("/sbin/ifconfig", ["-l"], timeout: 5).output
     for iface in list.split(whereSeparator: { $0 == " " || $0 == "\n" })
         .map(String.init).filter({ $0.hasPrefix("utun") }) {
-        let detail = run("/sbin/ifconfig", [iface]).output
+        let detail = run("/sbin/ifconfig", [iface], timeout: 5).output
         for raw in detail.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("inet ") else { continue }

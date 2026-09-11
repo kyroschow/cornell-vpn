@@ -21,6 +21,7 @@ CONFDIR=/usr/local/etc/cornell-vpn
 CONFIG="$CONFDIR/cornell.conf"
 HASHES="$CONFDIR/integrity.sha256"
 PIDFILE=/var/run/cornell-vpn.pid
+LOG=/var/log/cornell-vpn.log
 
 die() { printf 'cornell-vpn-helper: %s\n' "$*" >&2; exit 1; }
 
@@ -42,14 +43,27 @@ case "${1:-}" in
         if pgrep -x openconnect >/dev/null 2>&1; then
             echo "already connected"; exit 0
         fi
-        # Password arrives on stdin and is passed straight through.
-        exec "$OPENCONNECT" \
+        # Output goes to a root-owned log, NOT to our stdout. `--background`
+        # daemonises, and the daemon inherits stdout for the life of the
+        # tunnel; if that were the caller's pipe, any caller reading to EOF
+        # would block until the VPN disconnected. The GUI did exactly that and
+        # hung on "Connecting" while the tunnel was already up.
+        : > "$LOG" 2>/dev/null || true
+        chmod 600 "$LOG" 2>/dev/null || true
+        set +e
+        "$OPENCONNECT" \
             --config "$CONFIG" \
             --user "$netid" \
             --script "$VPNC_SCRIPT" \
             --passwd-on-stdin \
             --background \
-            --pid-file "$PIDFILE"
+            --pid-file "$PIDFILE" >>"$LOG" 2>&1
+        rc=$?
+        set -e
+        # Hand the authentication output back so callers can distinguish a
+        # rejected login from a network failure.
+        sed -n '1,200p' "$LOG" 2>/dev/null || true
+        exit "$rc"
         ;;
     down)
         pid="$(pgrep -x openconnect 2>/dev/null | head -1 || true)"
