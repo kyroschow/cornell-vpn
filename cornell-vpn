@@ -1,0 +1,131 @@
+#!/bin/bash
+# Connect to Cornell CU VPN using openconnect, natively on macOS.
+#
+# THERE IS DELIBERATELY NO RETRY. If authentication times out because the Duo
+# push was not approved, openconnect exits and nothing restarts it - run
+# `cornell-vpn up` again to trigger a fresh push. This is intentional: an
+# automatic retry resubmits the credentials and fires another push, which can
+# spam your phone overnight and risks a Duo fraud lockout.
+set -euo pipefail
+
+# Resolve this script's real directory, following symlinks, so cornell.conf is
+# found even when invoked through a symlink on PATH.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+CONFIG="${CORNELL_VPN_CONFIG:-$SCRIPT_DIR/cornell.conf}"
+PIDFILE="${CORNELL_VPN_PIDFILE:-/var/run/cornell-vpn.pid}"
+
+die() { printf 'cornell-vpn: %s\n' "$*" >&2; exit 1; }
+
+# PID of the running tunnel, or empty. Stale pidfiles are cleaned up.
+running_pid() {
+    [ -f "$PIDFILE" ] || return 1
+    local pid
+    pid="$(sudo cat "$PIDFILE" 2>/dev/null || true)"
+    [ -n "$pid" ] || return 1
+    if kill -0 "$pid" 2>/dev/null; then
+        printf '%s' "$pid"
+        return 0
+    fi
+    sudo rm -f "$PIDFILE" 2>/dev/null || true
+    return 1
+}
+
+# The tunnel interface openconnect created, e.g. utun4.
+tunnel_iface() {
+    local i addr
+    for i in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep '^utun'); do
+        addr="$(ipconfig getifaddr "$i" 2>/dev/null || true)"
+        case "$addr" in 10.*) printf '%s %s' "$i" "$addr"; return 0 ;; esac
+    done
+    return 1
+}
+
+cmd_up() {
+    if pid="$(running_pid)"; then
+        echo "already connected (pid $pid)"
+        cmd_status
+        return 0
+    fi
+    [ -f "$CONFIG" ] || die "config not found: $CONFIG"
+
+    echo "Connecting to Cornell CU VPN..."
+    echo "  1. enter your NetID password below"
+    echo "  2. APPROVE THE DUO PUSH on your phone (~30s before it times out)"
+    echo
+
+    # openconnect authenticates in the foreground, then daemonises once the
+    # tunnel is up. No retry wrapper: a failure here just returns.
+    if sudo openconnect --config "$CONFIG" --background --pid-file "$PIDFILE"; then
+        sleep 2
+        echo
+        if read -r iface addr <<<"$(tunnel_iface)"; then
+            echo "Connected. $iface = $addr"
+        else
+            echo "Connected (tunnel interface not detected yet)."
+        fi
+        echo "ssh ecelinux.ece.cornell.edu is ready."
+    else
+        echo
+        die "connection failed - not retrying. Was the Duo push approved in time?
+            Run 'cornell-vpn up' to try again."
+    fi
+}
+
+cmd_down() {
+    if ! pid="$(running_pid)"; then
+        echo "not connected"
+        return 0
+    fi
+    echo "Disconnecting (pid $pid)..."
+    sudo kill -TERM "$pid" 2>/dev/null || true
+    for _ in $(seq 1 15); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "did not exit on SIGTERM, forcing"
+        sudo kill -KILL "$pid" 2>/dev/null || true
+    fi
+    sudo rm -f "$PIDFILE" 2>/dev/null || true
+    echo "Disconnected."
+}
+
+cmd_status() {
+    if pid="$(running_pid)"; then
+        echo "connected (pid $pid)"
+        if read -r iface addr <<<"$(tunnel_iface)"; then
+            echo "  $iface = $addr"
+            echo "  mtu $(ifconfig "$iface" 2>/dev/null | awk '/mtu/{print $NF; exit}')"
+        fi
+    else
+        echo "not connected"
+        return 1
+    fi
+}
+
+case "${1:-}" in
+    up|start|connect)       cmd_up ;;
+    down|stop|disconnect)   cmd_down ;;
+    status)                 cmd_status ;;
+    restart)                cmd_down; echo; cmd_up ;;
+    *)
+        cat <<USAGE
+usage: cornell-vpn {up|down|status|restart}
+
+  up       connect (prompts for password, then sends a Duo push)
+  down     disconnect
+  status   show connection state and tunnel address
+  restart  disconnect, then connect again
+
+No automatic retry: if the Duo push times out, run 'cornell-vpn up' again.
+config: $CONFIG
+USAGE
+        exit 1 ;;
+esac

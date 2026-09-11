@@ -1,5 +1,0 @@
-# Credentials are mounted at runtime as a secret, never baked into the image.
-vpn.env
-
-**/.DS_Store
-*.log
