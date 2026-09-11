@@ -55,10 +55,21 @@ cmd_up() {
     fi
     [ -f "$CONFIG" ] || die "config not found: $CONFIG"
 
-    echo "Connecting to Cornell CU VPN..."
-    echo "  1. enter your NetID password below"
-    echo "  2. APPROVE THE DUO PUSH on your phone (~30s before it times out)"
+    echo "Connecting to Cornell CU VPN."
+    echo "There are TWO different password prompts - they are not the same password:"
+    echo "  1. macOS login password  (sudo: openconnect needs root for routes/DNS)"
+    echo "  2. Cornell NetID password"
+    echo "  3. then APPROVE THE DUO PUSH on your phone (~30s before it times out)"
     echo
+
+    # Take the sudo password first, under an unmistakable prompt, so it cannot
+    # be confused with the NetID prompt that openconnect shows straight after.
+    # This also caches the sudo timestamp, so the call below will not re-ask.
+    if ! sudo -p "[1/2] macOS login password for %u: " -v; then
+        die "sudo authentication failed - that prompt wants your MAC password, not your NetID password."
+    fi
+    echo
+    echo "[2/2] Cornell NetID password (for user $(awk -F'= *' '/^ *user *=/{print $2}' "$CONFIG" 2>/dev/null)):"
 
     # openconnect authenticates in the foreground, then daemonises once the
     # tunnel is up. No retry wrapper: a failure here just returns.

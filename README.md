@@ -22,8 +22,14 @@ cornell-vpn down     # disconnect
 cornell-vpn restart  # down, then up
 ```
 
-`up` needs `sudo` (openconnect edits the routing table and DNS) and asks for
-your NetID password. It never stores it.
+`up` asks for **two different passwords**, in this order:
+
+1. **macOS login password** - for `sudo`, because openconnect edits the routing
+   table and DNS.
+2. **Cornell NetID password** - for the VPN itself. Never stored.
+
+They are easy to confuse. If you see `Sorry, try again.` that is *sudo*
+rejecting your Mac password; openconnect says `Login failed.` instead.
 
 Then `ssh cornell-ece`, or anything else that needs Cornell.
 
