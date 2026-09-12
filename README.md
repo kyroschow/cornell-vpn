@@ -70,6 +70,9 @@ disconnect, with no terminal.
 ./menubar/install.sh      # NOT with sudo - it asks when it needs root
 ```
 
+The menu bar shows **CU** with a status dot: red disconnected, yellow
+connecting, green connected.
+
 It builds `/Applications/CornellVPN.app` (no Dock icon), installs a root helper
 and a narrow `sudoers.d` rule, and opens Settings so you can save your NetID and
 password to the macOS Keychain. After that: click the icon, Connect, approve the

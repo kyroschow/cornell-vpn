@@ -118,11 +118,40 @@ enum Keychain {
 
 // MARK: - VPN state
 
+enum LinkStatus {
+    case disconnected   // red    - openconnect not running
+    case connecting     // yellow - authenticating, or up but no address yet
+    case connected      // green  - tunnel carrying a Cornell address
+
+    var dotColor: NSColor {
+        switch self {
+        case .disconnected: return .systemRed
+        case .connecting:   return .systemYellow
+        case .connected:    return .systemGreen
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .disconnected: return "Cornell VPN — Disconnected"
+        case .connecting:   return "Cornell VPN — Connecting…"
+        case .connected:    return "Cornell VPN — Connected"
+        }
+    }
+}
+
 struct VPNState {
-    var connected = false
+    var processRunning = false
     var iface: String?
     var ip: String?
     var mtu: String?
+
+    // A running process without an address means authentication is still in
+    // flight (or the Duo push has not been approved yet).
+    var status: LinkStatus {
+        guard processRunning else { return .disconnected }
+        return ip == nil ? .connecting : .connected
+    }
 }
 
 func currentState() -> VPNState {
@@ -141,11 +170,48 @@ func currentState() -> VPNState {
             if let r = detail.range(of: "mtu ") {
                 mtu = String(detail[r.upperBound...].prefix(while: { $0.isNumber }))
             }
-            return VPNState(connected: true, iface: iface, ip: parts[1], mtu: mtu)
+            return VPNState(processRunning: true, iface: iface, ip: parts[1], mtu: mtu)
         }
     }
     // Process alive but no tunnel address yet (still connecting).
-    return VPNState(connected: true)
+    return VPNState(processRunning: true)
+}
+
+// MARK: - Menu bar icon
+
+// "CU" with a coloured status dot. Deliberately NOT a template image: macOS
+// renders template images monochrome, which would flatten the dot to the same
+// shade as the text. The text therefore has to follow the menu bar appearance
+// itself, which it does because the drawing handler runs at draw time, with
+// NSAppearance.current already set — so labelColor resolves correctly in both
+// light and dark menu bars.
+func statusImage(for status: LinkStatus) -> NSImage {
+    let dotSize: CGFloat = 7
+    let gap: CGFloat = 3
+    let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    let text = NSAttributedString(string: "CU", attributes: [.font: font])
+    let textSize = text.size()
+    let width = ceil(textSize.width) + gap + dotSize
+    let height: CGFloat = 18
+
+    let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+        let label = NSAttributedString(string: "CU", attributes: [
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+        ])
+        let ty = (rect.height - textSize.height) / 2
+        label.draw(at: NSPoint(x: 0, y: ty))
+
+        status.dotColor.setFill()
+        let dot = NSBezierPath(ovalIn: NSRect(
+            x: rect.width - dotSize,
+            y: (rect.height - dotSize) / 2,
+            width: dotSize, height: dotSize))
+        dot.fill()
+        return true
+    }
+    image.isTemplate = false
+    return image
 }
 
 // MARK: - App
@@ -176,28 +242,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     // MARK: UI
 
     func refresh() {
-        let state = busy ? VPNState() : currentState()
-        let symbol = busy ? "arrow.triangle.2.circlepath"
-                          : (state.connected ? "lock.shield.fill" : "lock.shield")
+        let state = currentState()
+        // A click in progress pins the indicator to yellow: the process may not
+        // have started yet, which would otherwise read as disconnected.
+        let status: LinkStatus = busy ? .connecting : state.status
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Cornell VPN")
-            button.image?.isTemplate = true
+            button.image = statusImage(for: status)
+            button.toolTip = busy ? busyLabel : status.label
         }
-        statusItem.menu = buildMenu(state)
+        statusItem.menu = buildMenu(state, status: status)
     }
 
-    func buildMenu(_ state: VPNState) -> NSMenu {
+    func buildMenu(_ state: VPNState, status: LinkStatus) -> NSMenu {
         let menu = NSMenu()
 
-        let header: String
-        if busy { header = busyLabel }
-        else if state.connected { header = "Cornell VPN — Connected" }
-        else { header = "Cornell VPN — Disconnected" }
-        let headerItem = NSMenuItem(title: header, action: nil, keyEquivalent: "")
+        let headerItem = NSMenuItem(title: busy ? busyLabel : status.label,
+                                    action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
         menu.addItem(headerItem)
 
-        if state.connected, let ip = state.ip {
+        if status == .connected, let ip = state.ip {
             var detail = "\(state.iface ?? "utun")  ·  \(ip)"
             if let mtu = state.mtu { detail += "  ·  MTU \(mtu)" }
             let d = NSMenuItem(title: detail, action: nil, keyEquivalent: "")
@@ -211,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             let b = NSMenuItem(title: "Working…", action: nil, keyEquivalent: "")
             b.isEnabled = false
             menu.addItem(b)
-        } else if state.connected {
+        } else if status != .disconnected {
             menu.addItem(NSMenuItem(title: "Disconnect",
                                     action: #selector(disconnect), keyEquivalent: "d"))
         } else {
