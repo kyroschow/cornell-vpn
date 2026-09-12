@@ -71,7 +71,10 @@ disconnect, with no terminal.
 ```
 
 The menu bar shows **CU** with a status dot: red disconnected, yellow
-connecting, green connected.
+connecting, green connected. The bundle also carries a Cornell-carnelian app
+icon, which is what Finder, Launchpad, Spotlight and the Login Items list show
+(an `LSUIElement` app has no Dock icon). Both are generated at install time by
+`AppIcon.swift`, so no image files are committed.
 
 It builds `/Applications/CornellVPN.app` (no Dock icon), installs a root helper
 and a narrow `sudoers.d` rule, and opens Settings so you can save your NetID and

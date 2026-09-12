@@ -32,8 +32,16 @@ USER_NAME="$(id -un)"
 step "Building CornellVPN.app"
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
-mkdir -p "$BUILD/CornellVPN.app/Contents/MacOS"
+mkdir -p "$BUILD/CornellVPN.app/Contents/MacOS" "$BUILD/CornellVPN.app/Contents/Resources"
 swiftc -O -o "$BUILD/CornellVPN.app/Contents/MacOS/CornellVPN" "$HERE/CornellVPN.swift"
+
+# App icon. LSUIElement apps have no Dock icon, but Finder, Launchpad,
+# Spotlight and the Login Items list all show the bundle icon. Generated here
+# rather than committed so no binary blob lives in the repo.
+swiftc -O -o "$BUILD/AppIcon" "$HERE/AppIcon.swift"
+"$BUILD/AppIcon" "$BUILD/CornellVPN.iconset" >/dev/null
+iconutil -c icns -o "$BUILD/CornellVPN.app/Contents/Resources/CornellVPN.icns" \
+    "$BUILD/CornellVPN.iconset"
 
 cat > "$BUILD/CornellVPN.app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -47,6 +55,7 @@ cat > "$BUILD/CornellVPN.app/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>CornellVPN</string>
+  <key>CFBundleIconFile</key><string>CornellVPN</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <!-- Menu bar only: no Dock icon, no app switcher entry. -->
   <key>LSUIElement</key><true/>
