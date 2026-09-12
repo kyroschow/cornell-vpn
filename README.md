@@ -108,11 +108,11 @@ sudo rm -rf /Applications/CornellVPN.app /usr/local/libexec/cornell-vpn-helper \
 
 `cornell.conf` is a standard openconnect config file (long options, no `--`),
 copied from `cornell.conf.example` and ignored by git.
-Two settings are commented out and worth knowing about:
+Two settings worth knowing about:
 
 ```
-# no-dtls = true
-# server = https://vpn4-asa.cuvpn.cornell.edu
+server = https://vpn4-asa.cuvpn.cornell.edu   # active: pinned, not the VIP
+# no-dtls = true                              # if the MTU collapses to ~576
 ```
 
 Environment overrides: `CORNELL_VPN_CONFIG`, `CORNELL_VPN_PIDFILE`.
