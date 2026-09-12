@@ -63,7 +63,7 @@ laptop sleep, or a long outage — it exits and stays exited.
 
 ## Menu bar app (optional)
 
-`menubar/` builds a small menu-bar-only app: click the lock icon to connect or
+`menubar/` builds a small menu-bar-only app: click the icon to connect or
 disconnect, with no terminal.
 
 ```sh
