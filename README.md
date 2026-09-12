@@ -130,12 +130,16 @@ Environment overrides: `CORNELL_VPN_CONFIG`, `CORNELL_VPN_PIDFILE`.
 
 ## Troubleshooting
 
-**Connection hangs before the password prompt.** `cuvpn.cuvpn.cornell.edu` is a
-load-balancing VIP that redirects to a cluster member (`vpn4-asa` /
-`vpn5-asa`). The redirect happens *before* the login form, so a member that is
-out of service makes the connection hang with no Duo push at all. `vpn5-asa`
-was down 2026-08-28 to at least 08-30. Test the members and pin a healthy one
-with `server =` in `cornell.conf`:
+**Connection hangs, and no Duo push arrives.** A cluster member is out of
+service. `cuvpn.cuvpn.cornell.edu` is a load-balancing VIP that redirects to
+`vpn4-asa` or `vpn5-asa` *before* the login form, so landing on a dead member
+hangs the connection before any credentials are submitted — which is why no
+push appears. `vpn5-asa` was down 2026-08-28..08-30 and again on 09-11.
+
+Both configs are therefore **pinned to `vpn4-asa`** rather than using the VIP.
+If vpn4-asa is ever the dead one, test the members and switch the `server =`
+line in `cornell.conf` (CLI) and `/usr/local/etc/cornell-vpn/cornell.conf`
+(menu bar app, root-owned — re-run `install.sh` after editing the installer):
 
 ```sh
 nc -z -w5 132.236.56.113 443   # vpn4-asa

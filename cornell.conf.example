@@ -2,7 +2,10 @@
 # No password here - it is typed interactively at each connect.
 
 protocol = anyconnect
-server = https://cuvpn.cuvpn.cornell.edu
+# Pinned to a cluster member rather than the cuvpn load-balancing VIP: cuvpn
+# redirects before the login form, so a member that is out of service hangs the
+# connection with no Duo push. vpn5-asa was down 2026-08-28..08-30 and 09-11.
+server = https://vpn4-asa.cuvpn.cornell.edu
 user = your-netid
 
 # Required by Cornell since 2021-07-15.
@@ -21,6 +24,6 @@ script = /opt/homebrew/etc/vpnc/vpnc-script
 # detected dead peer". Check with: ifconfig utunN | grep mtu
 # no-dtls = true
 #
-# cuvpn load-balances across vpn4-asa and vpn5-asa. If one is out of service a
-# connection can hang before the login form appears. Pin a known-good node:
-# server = https://vpn4-asa.cuvpn.cornell.edu
+# If vpn4-asa is ever the one out of service, switch the server line above:
+# server = https://vpn5-asa.cuvpn.cornell.edu
+# server = https://cuvpn.cuvpn.cornell.edu    (load balancer, picks either)

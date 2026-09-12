@@ -70,7 +70,12 @@ sudo tee "$CONFDIR/cornell.conf" >/dev/null <<CONF
 # openconnect as root, and a user-writable config could inject
 # "script = /tmp/evil", which openconnect would execute as root.
 protocol = anyconnect
-server = https://cuvpn.cuvpn.cornell.edu
+# Pinned to a specific cluster member rather than the cuvpn load-balancing VIP.
+# cuvpn redirects to vpn4-asa or vpn5-asa BEFORE the login form, so when a
+# member is out of service the connection hangs with no Duo push at all.
+# vpn5-asa was down 2026-08-28..08-30 and again on 09-11. Change this line if
+# vpn4-asa is ever the one that is down.
+server = https://vpn4-asa.cuvpn.cornell.edu
 authgroup = Two-Step_Login
 form-entry = main:secondary_password=push
 # Uncomment if the tunnel MTU collapses to ~576 on your network:
