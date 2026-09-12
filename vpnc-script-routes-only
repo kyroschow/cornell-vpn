@@ -1,0 +1,27 @@
+#!/bin/sh
+# Routes-only wrapper around vpnc-script.
+#
+# openconnect hands vpnc-script the tunnel address, the split-tunnel routes AND
+# the VPN's DNS servers, and vpnc-script acts on all of them - including
+# rewriting /etc/resolv.conf. Clearing the DNS variables here means the routes
+# are still installed but system DNS is left alone, so the VPN never competes
+# with Tailscale (or anything else) for the resolver, and DNS keeps working
+# unchanged whether the tunnel is up or down.
+#
+# Cornell's hosts are published in public DNS - ecelinux, ecelinux-17, cuvpn and
+# vpn4-asa all resolve identically from Cornell's resolvers and from 8.8.8.8 -
+# so they still resolve, and the routes below carry the traffic into the tunnel.
+# If some Cornell name ever fails to resolve while connected, it is published
+# only on Cornell's internal DNS: point script/--script back at the real
+# vpnc-script to restore the previous behaviour.
+#
+# The path to the real script is hardcoded deliberately. This file runs as root,
+# so it must not take a path from the environment.
+set -e
+
+unset INTERNAL_IP4_DNS
+unset INTERNAL_IP6_DNS
+unset CISCO_DEF_DOMAIN
+unset CISCO_SPLIT_DNS
+
+exec /opt/homebrew/etc/vpnc/vpnc-script "$@"

@@ -16,7 +16,13 @@
 set -euo pipefail
 
 OPENCONNECT=/opt/homebrew/bin/openconnect
-VPNC_SCRIPT=/opt/homebrew/etc/vpnc/vpnc-script
+# Routes-only wrapper, installed root-owned next to this helper. It must NOT
+# live in the repo: this runs under a NOPASSWD sudo rule, and a user-writable
+# script executed as root is exactly the escalation hole the rest of this file
+# is built to avoid. It chains to the real vpnc-script below, which is what the
+# integrity check covers.
+VPNC_SCRIPT=/usr/local/libexec/cornell-vpn-vpnc-script
+REAL_VPNC_SCRIPT=/opt/homebrew/etc/vpnc/vpnc-script
 CONFDIR=/usr/local/etc/cornell-vpn
 CONFIG="$CONFDIR/cornell.conf"
 HASHES="$CONFDIR/integrity.sha256"
@@ -27,6 +33,7 @@ die() { printf 'cornell-vpn-helper: %s\n' "$*" >&2; exit 1; }
 
 verify_integrity() {
     [ -f "$HASHES" ] || die "missing $HASHES - re-run install.sh"
+    [ -x "$VPNC_SCRIPT" ] || die "missing $VPNC_SCRIPT - re-run install.sh"
     if ! shasum -a 256 -c "$HASHES" >/dev/null 2>&1; then
         die "integrity check FAILED for openconnect or vpnc-script.
     This is expected after 'brew upgrade openconnect' - re-run install.sh to

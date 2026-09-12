@@ -4,6 +4,7 @@
 # Installs, using sudo where required:
 #   /Applications/CornellVPN.app            the menu bar app (no Dock icon)
 #   /usr/local/libexec/cornell-vpn-helper   root helper (root:wheel 0755)
+#   /usr/local/libexec/cornell-vpn-vpnc-script  routes-only wrapper (root:wheel)
 #   /usr/local/etc/cornell-vpn/cornell.conf root-owned openconnect config
 #   /usr/local/etc/cornell-vpn/integrity.sha256
 #   /etc/sudoers.d/cornell-vpn              NOPASSWD rule, helper only
@@ -14,6 +15,7 @@ set -euo pipefail
 HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP=/Applications/CornellVPN.app
 HELPER=/usr/local/libexec/cornell-vpn-helper
+WRAPPER=/usr/local/libexec/cornell-vpn-vpnc-script
 CONFDIR=/usr/local/etc/cornell-vpn
 OPENCONNECT=/opt/homebrew/bin/openconnect
 VPNC_SCRIPT=/opt/homebrew/etc/vpnc/vpnc-script
@@ -71,6 +73,11 @@ sudo chown -R root:wheel "$APP"
 step "Installing the root helper and config"
 sudo install -d -o root -g wheel -m 755 /usr/local/libexec "$CONFDIR"
 sudo install -o root -g wheel -m 755 "$HERE/cornell-vpn-helper" "$HELPER"
+
+# Routes-only wrapper. Installed root-owned rather than run from the repo: the
+# helper invokes it as root under a NOPASSWD rule, so a user-writable copy would
+# be a silent path to root.
+sudo install -o root -g wheel -m 755 "$HERE/../vpnc-script-routes-only" "$WRAPPER"
 
 # Root-owned config. Deliberately omits `user` (passed as an argument) and
 # `script` (passed explicitly), so nothing user-writable feeds openconnect.

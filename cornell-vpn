@@ -79,7 +79,12 @@ cmd_up() {
 
     # openconnect authenticates in the foreground, then daemonises once the
     # tunnel is up. No retry wrapper: a failure here just returns.
-    if sudo openconnect --config "$CONFIG" --background --pid-file "$PIDFILE"; then
+    # --script is passed here rather than set in cornell.conf so the path
+    # follows the checkout instead of being hardcoded per machine. The wrapper
+    # installs routes but leaves system DNS alone; see the comments in it.
+    if sudo openconnect --config "$CONFIG" \
+            --script "$SCRIPT_DIR/vpnc-script-routes-only" \
+            --background --pid-file "$PIDFILE"; then
         sleep 2
         echo
         if read -r iface addr <<<"$(tunnel_iface)"; then

@@ -15,8 +15,8 @@ authgroup = Two-Step_Login
 # Change to "phone", "sms", or a 6-digit passcode if you prefer.
 form-entry = main:secondary_password=push
 
-# Routes and DNS are configured by this script (installed with openconnect).
-script = /opt/homebrew/etc/vpnc/vpnc-script
+# No `script` line: cornell-vpn passes --script itself, pointing at
+# vpnc-script-routes-only, which installs routes but does not touch system DNS.
 
 # --- Optional, uncomment if needed -------------------------------------
 # DTLS (UDP) is unreliable on some networks: the MTU probe fails, drops to the

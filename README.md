@@ -12,6 +12,7 @@ Two files:
 | `cornell-vpn` | up / down / status / restart wrapper |
 | `cornell.conf` | openconnect settings (no password) — yours, gitignored |
 | `cornell.conf.example` | template to copy |
+| `vpnc-script-routes-only` | installs routes but leaves system DNS alone |
 
 ## Install
 
@@ -24,6 +25,24 @@ ln -sf "$PWD/cornell-vpn" /opt/homebrew/bin/cornell-vpn
 `cornell.conf` is gitignored, so your NetID and any local overrides stay out of
 the repo. `brew install openconnect` also provides the `vpnc-script` that
 installs routes and DNS.
+
+### DNS is left alone
+
+By default `vpnc-script` rewrites `/etc/resolv.conf` with the VPN's DNS servers,
+so while connected Cornell resolves *everything* you look up, and DNS breaks if
+that restore ever goes wrong on disconnect. It also fights anything else that
+manages DNS - Tailscale in particular, which produced a wedged resolver where
+`ping 8.8.8.8` worked but no hostname resolved.
+
+`vpnc-script-routes-only` clears the DNS variables before chaining to the real
+script, so the 26 Cornell routes are installed and the resolver is untouched.
+Cornell hosts still resolve: `ecelinux`, `ecelinux-17`, `cuvpn` and `vpn4-asa`
+all return identical addresses from Cornell's resolvers and from `8.8.8.8`.
+
+If some Cornell name ever fails to resolve while connected, it is published only
+on Cornell's internal DNS. Point `--script` back at
+`/opt/homebrew/etc/vpnc/vpnc-script` (in `cornell-vpn`, and `VPNC_SCRIPT` in
+`menubar/cornell-vpn-helper`) to restore the old behaviour.
 
 ## Use
 
@@ -93,8 +112,13 @@ validates the NetID, reads a **root-owned** config (a user-writable one could
 inject `script = ...`, which openconnect runs as root), and takes the password
 on stdin rather than argv.
 
-It also verifies the SHA-256 of `openconnect` and `vpnc-script` before running
-them. That check matters: Homebrew's prefix is user-writable, so without it any
+The routes-only wrapper is installed root-owned at
+`/usr/local/libexec/cornell-vpn-vpnc-script` rather than being run from the
+repo, since the helper executes it as root and a user-writable copy would be a
+silent path to root.
+
+It also verifies the SHA-256 of `openconnect` and the real `vpnc-script` before
+running them. That check matters: Homebrew's prefix is user-writable, so without it any
 process running as you could replace `openconnect` and reach root through the
 NOPASSWD rule. Re-run `install.sh` after `brew upgrade openconnect` to
 re-record the hashes.
@@ -107,6 +131,7 @@ Uninstall:
 
 ```sh
 sudo rm -rf /Applications/CornellVPN.app /usr/local/libexec/cornell-vpn-helper \
+            /usr/local/libexec/cornell-vpn-vpnc-script \
             /usr/local/etc/cornell-vpn /etc/sudoers.d/cornell-vpn
 ```
 
