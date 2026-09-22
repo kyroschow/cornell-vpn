@@ -5,14 +5,27 @@ running natively on macOS. The Mac itself joins the VPN, so ssh, VS Code
 Remote-SSH, browsers and everything else reach Cornell directly — no proxy, no
 container, no per-application configuration.
 
-Two files:
-
 | File | Purpose |
 |---|---|
 | `cornell-vpn` | up / down / status / restart wrapper |
 | `cornell.conf` | openconnect settings (no password) — yours, gitignored |
 | `cornell.conf.example` | template to copy |
 | `vpnc-script-routes-only` | installs routes but leaves system DNS alone |
+
+## Requirements
+
+- macOS (developed on Apple silicon; the Homebrew paths below are hardcoded to
+  `/opt/homebrew`, so Intel Macs need them changed to `/usr/local`)
+- [Homebrew](https://brew.sh)
+- Xcode Command Line Tools — only for the optional menu bar app, which compiles
+  Swift: `xcode-select --install`
+- A Cornell NetID with Duo two-step login
+
+> **Before installing the menu bar app**, read
+> [Security note](#security-note). It installs a `NOPASSWD` sudo rule so that
+> one click can connect without a password, which is a deliberate trade and not
+> right for every machine. The `cornell-vpn` CLI needs no such rule and asks for
+> your password each time.
 
 ## Install
 
@@ -106,6 +119,9 @@ can be removed in Keychain Access.
 
 ### Security note
 
+This section applies to the **menu bar app only**. The `cornell-vpn` CLI
+installs nothing privileged and prompts for your password on every connect.
+
 The sudoers rule is `NOPASSWD`, which is what makes one click enough. It is
 scoped to one root-owned helper that accepts only `up <netid>` and `down`,
 validates the NetID, reads a **root-owned** config (a user-writable one could
@@ -147,6 +163,20 @@ server = https://vpn4-asa.cuvpn.cornell.edu   # active: pinned, not the VIP
 ```
 
 Environment overrides: `CORNELL_VPN_CONFIG`, `CORNELL_VPN_PIDFILE`.
+
+### Your NetID
+
+Your NetID lives in exactly one place, `cornell.conf`, which is gitignored — so
+it stays on your machine. The menu bar app keeps it in `UserDefaults` instead,
+editable from **Settings**. Your password is never written to either: the CLI
+prompts for it, and the app stores it in the macOS Keychain.
+
+For transparency: this repository's git history contains the original author's
+NetID, from before `cornell.conf` was gitignored. It was left in place rather
+than rewritten. A NetID is a public identifier — it is the local part of a
+Cornell email address — not a credential, and no password has ever been
+committed. If you fork this and commit your own `cornell.conf` by accident, that
+is worth rewriting; the NetID alone is not.
 
 ## Gateway notes
 
